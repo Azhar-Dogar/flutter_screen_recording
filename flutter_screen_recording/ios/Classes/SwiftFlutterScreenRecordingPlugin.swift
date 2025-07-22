@@ -137,32 +137,77 @@ public class SwiftFlutterScreenRecordingPlugin: NSObject, FlutterPlugin {
         }
     }
     
+    // func stopRecording(result: @escaping FlutterResult) {
+    //     // Detener la captura con ReplayKit
+    //     guard isRecording else {
+    //         result(FlutterError(code: "NOT_RECORDING", message: "No recording in progress", details: nil))
+    //         return
+    //     }
+    //     isRecording = false
+    //     if #available(iOS 11.0, *) {
+    //         recorder.stopCapture { [weak self] error in
+    //             guard let self = self else { return }
+    //
+    //             self.videoWriterInput?.markAsFinished()
+    //             self.audioWriterInput?.markAsFinished()
+    //             self.videoWriter?.finishWriting {
+    //                 if let error = error {
+    //                     result(FlutterError(code: "STOP_ERROR", message: "Failed to stop recording", details: error.localizedDescription))
+    //                 } else {
+    //                     let alertController = UIAlertController(title: "Your video was successfully saved", message: nil, preferredStyle: .alert)
+    //                     let defaultAction = UIAlertAction(title: "OK", style: .default, handler: nil)
+    //                     alertController.addAction(defaultAction)
+    //                     result(self.videoOutputURL?.path)
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     else {
+    //         result(FlutterError(code: "IOS_VERSION_ERROR", message: "This feature is only available on iOS 11 or later", details: nil))
+    //     }
+    // }
+
     func stopRecording(result: @escaping FlutterResult) {
-        // Detener la captura con ReplayKit
         guard isRecording else {
             result(FlutterError(code: "NOT_RECORDING", message: "No recording in progress", details: nil))
             return
         }
+
         isRecording = false
+
         if #available(iOS 11.0, *) {
             recorder.stopCapture { [weak self] error in
                 guard let self = self else { return }
-                
-                self.videoWriterInput?.markAsFinished()
-                self.audioWriterInput?.markAsFinished()
-                self.videoWriter?.finishWriting {
-                    if let error = error {
-                        result(FlutterError(code: "STOP_ERROR", message: "Failed to stop recording", details: error.localizedDescription))
-                    } else {
-                        let alertController = UIAlertController(title: "Your video was successfully saved", message: nil, preferredStyle: .alert)
-                        let defaultAction = UIAlertAction(title: "OK", style: .default, handler: nil)
-                        alertController.addAction(defaultAction)
-                        result(self.videoOutputURL?.path)
+
+                if let error = error {
+                    result(FlutterError(code: "STOP_ERROR", message: "Failed to stop screen capture", details: error.localizedDescription))
+                    return
+                }
+
+                guard let writer = self.videoWriter else {
+                    result(FlutterError(code: "WRITER_MISSING", message: "Video writer not initialized", details: nil))
+                    return
+                }
+
+                if writer.status == .writing {
+                    self.videoWriterInput?.markAsFinished()
+                    self.audioWriterInput?.markAsFinished()
+
+                    writer.finishWriting {
+                        if let finalError = writer.error {
+                            result(FlutterError(code: "WRITE_ERROR", message: "Failed to finalize recording", details: finalError.localizedDescription))
+                        } else if let outputPath = self.videoOutputURL?.path {
+                            result(outputPath)
+                        } else {
+                            result(FlutterError(code: "OUTPUT_PATH_ERROR", message: "Video output path is nil", details: nil))
+                        }
                     }
+                } else {
+                    let errorMsg = "Writer not in writing state. Current state: \(writer.status.rawValue)"
+                    result(FlutterError(code: "INVALID_WRITER_STATE", message: errorMsg, details: writer.error?.localizedDescription))
                 }
             }
-        }
-        else {
+        } else {
             result(FlutterError(code: "IOS_VERSION_ERROR", message: "This feature is only available on iOS 11 or later", details: nil))
         }
     }
